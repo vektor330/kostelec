@@ -1,28 +1,92 @@
 package cz.matej.kostelec;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.DirectoryIteratorException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public final class Searcher {
 
-  private final String root;
+  private final Path root;
 
-  public Searcher(final String root) {
+  public Searcher(final Path root) {
     this.root = root;
   }
 
   public void search() {
-    System.out.println(root);
-    final File folder = new File(root);
-    final File[] listOfFiles = folder.listFiles();
-    if (listOfFiles == null) {
-      return; // Added condition check
-    }
-    for (final File file : listOfFiles) {
-      final String path = file.getPath().replace('\\', '/');
-      System.out.println(path);
-      if (file.isDirectory()) {
-        new Searcher(path + "/").search();
+    try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
+      for (final Path file : stream) {
+        if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+          examine(file);
+        }
+        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) {
+          new Searcher(file).search();
+        }
       }
+    } catch (IOException | DirectoryIteratorException x) {
+      System.err.println(x);
+    }
+  }
+
+  private static void examine(final Path path) {
+    try {
+      final BasicFileAttributes attributes = Files.readAttributes(path,
+          BasicFileAttributes.class);
+      final FileTime creationTime = attributes.creationTime();
+
+      System.out.println(path.toAbsolutePath() + ";;;;" + attributes.size()
+          + ";;;;" + creationTime.toMillis() + ";;;;" + getHash(path));
+    } catch (final IOException e) {
+      e.printStackTrace();
+    }
+  }
+
+  private static String getHash(final Path path) throws IOException {
+
+    MessageDigest md = null;
+    ByteBuffer bbf = null;
+    StringBuilder hexString = null;
+
+    try (final FileChannel fc = FileChannel.open(path, StandardOpenOption.READ)) {
+      md = MessageDigest.getInstance("MD5");
+      bbf = ByteBuffer.allocateDirect(8192);
+
+      int b;
+
+      b = fc.read(bbf);
+
+      while (b != -1 && b != 0) {
+        bbf.flip();
+
+        final byte[] bytes = new byte[b];
+        bbf.get(bytes);
+
+        md.update(bytes, 0, b);
+
+        bbf.clear();
+        b = fc.read(bbf);
+      }
+
+      final byte[] mdbytes = md.digest();
+
+      hexString = new StringBuilder();
+
+      for (int i = 0; i < mdbytes.length; i++) {
+        hexString.append(Integer.toHexString(0xFF & mdbytes[i]));
+      }
+
+      return hexString.toString();
+    } catch (final NoSuchAlgorithmException e) {
+      return null;
     }
   }
 }
