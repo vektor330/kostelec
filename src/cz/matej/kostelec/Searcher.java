@@ -13,13 +13,25 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 
 public final class Searcher {
 
   private final Path root;
+  private final List<Path> excluded;
+  private final Delegate delegate;
 
-  public Searcher(final Path root) {
+  public Searcher(final Path root, final Delegate delegate) {
+    this(root, Collections.<Path> emptyList(), delegate);
+  }
+
+  public Searcher(final Path root, final List<Path> excluded,
+      final Delegate delegate) {
     this.root = root;
+    this.excluded = excluded;
+    this.delegate = delegate;
   }
 
   public void search() {
@@ -29,7 +41,7 @@ public final class Searcher {
           examine(file);
         }
         if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) {
-          new Searcher(file).search();
+          new Searcher(file, excluded, delegate).search();
         }
       }
     } catch (IOException | DirectoryIteratorException x) {
@@ -37,14 +49,15 @@ public final class Searcher {
     }
   }
 
-  private static void examine(final Path path) {
+  private void examine(final Path path) {
     try {
       final BasicFileAttributes attributes = Files.readAttributes(path,
           BasicFileAttributes.class);
       final FileTime creationTime = attributes.creationTime();
 
-      System.out.println(path.toAbsolutePath() + ";;;;" + attributes.size()
-          + ";;;;" + creationTime.toMillis() + ";;;;" + getHash(path));
+      delegate.fileFound(path.toAbsolutePath().toString(), path.getFileName()
+          .toString(), attributes.size(), new Date(creationTime.toMillis()),
+          getHash(path));
     } catch (final IOException e) {
       e.printStackTrace();
     }
