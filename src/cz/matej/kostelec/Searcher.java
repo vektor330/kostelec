@@ -55,9 +55,9 @@ public final class Searcher {
           BasicFileAttributes.class);
       final FileTime creationTime = attributes.creationTime();
 
-      delegate.fileFound(path.toAbsolutePath().toString(), path.getFileName()
-          .toString(), attributes.size(), new Date(creationTime.toMillis()),
-          getHash(path));
+      delegate.found(new FoundFile(path.toAbsolutePath().toString(), path
+          .getFileName().toString(), attributes.size(), new Date(creationTime
+          .toMillis()), getHash(path)));
     } catch (final IOException e) {
       e.printStackTrace();
     }

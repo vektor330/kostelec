@@ -5,11 +5,15 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.Date;
+import java.util.ArrayList;
+import java.util.List;
 
 public class DatabaseDelegate implements Delegate {
 
+  private final static int CACHE_SIZE = 1024;
+
   private final String searchId;
+  private final List<FoundFile> cache = new ArrayList<FoundFile>(CACHE_SIZE);
   private Connection con;
 
   public DatabaseDelegate(final String searchId) {
@@ -26,24 +30,31 @@ public class DatabaseDelegate implements Delegate {
   }
 
   @Override
-  public void fileFound(final String absolutePath, final String fileName,
-      final long size, final Date creationTime, final String hash) {
-    try {
-      final PreparedStatement ps = con
-          .prepareStatement("INSERT INTO files (search_id, fullpath, name, size, created, hash) "
-              + "VALUES (?, ?, ?, ?, ?, ?);");
-      ps.setString(1, searchId);
-      ps.setString(2, absolutePath);
-      ps.setString(3, fileName);
-      ps.setLong(4, size);
-      ps.setTimestamp(5, new Timestamp(creationTime.getTime()));
-      ps.setString(6, hash);
-      final int inserted = ps.executeUpdate();
-      if (inserted != 1) {
-        throw new RuntimeException("Expected to insert 1 row, inserted "
-            + inserted);
+  public void found(final FoundFile file) {
+    cache.add(file);
+    if (cache.size() < CACHE_SIZE) {
+      return;
+    }
+    flush();
+  }
+
+  private void flush() {
+    try (final PreparedStatement ps = con.prepareStatement("INSERT INTO files "
+        + "(search_id, fullpath, name, size, created, hash) "
+        + "VALUES (?, ?, ?, ?, ?, ?);")) {
+      for (final FoundFile file_ : cache) {
+        ps.setString(1, searchId);
+        ps.setString(2, file_.getAbsolutePath());
+        ps.setString(3, file_.getFileName());
+        ps.setLong(4, file_.getSize());
+        ps.setTimestamp(5, new Timestamp(file_.getCreationTime().getTime()));
+        ps.setString(6, file_.getHash());
+        ps.addBatch();
       }
+      ps.executeBatch();
+      System.out.println("Added " + CACHE_SIZE + " found files.");
       ps.close();
+      cache.clear();
     } catch (final SQLException e) {
       e.printStackTrace();
     }
@@ -51,6 +62,9 @@ public class DatabaseDelegate implements Delegate {
 
   public void close() {
     try {
+      if (cache.size() > 0) {
+        flush();
+      }
       con.close();
     } catch (final SQLException e) {
       e.printStackTrace();
