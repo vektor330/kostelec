@@ -40,7 +40,8 @@ public final class Searcher {
         if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
           examine(file);
         }
-        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) {
+        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)
+            && !excluded.contains(file)) {
           new Searcher(file, excluded, delegate).search();
         }
       }
