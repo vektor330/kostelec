@@ -2,6 +2,9 @@ package cz.matej.kostelec;
 
 public interface Delegate {
 
-  void found(FoundFile found);
+  /**
+   * Returns true if the data has just been flushed.
+   */
+  boolean found(FoundFile found);
 
 }

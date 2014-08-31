@@ -30,31 +30,59 @@ public class DatabaseDelegate implements Delegate {
   }
 
   @Override
-  public void found(final FoundFile file) {
+  public boolean found(final FoundFile file) {
     cache.add(file);
     if (cache.size() < CACHE_SIZE) {
-      return;
+      return false;
     }
     flush();
+    return true;
   }
 
   private void flush() {
     try (final PreparedStatement ps = con.prepareStatement("INSERT INTO files "
-        + "(search_id, fullpath, name, size, created, hash) "
-        + "VALUES (?, ?, ?, ?, ?, ?);")) {
-      for (final FoundFile file_ : cache) {
+        + "(search_id, fullpath, name, size, created, modified, hash) "
+        + "VALUES (?, ?, ?, ?, ?, ?, ?);")) {
+      for (final FoundFile file : cache) {
         ps.setString(1, searchId);
-        ps.setString(2, file_.getAbsolutePath());
-        ps.setString(3, file_.getFileName());
-        ps.setLong(4, file_.getSize());
-        ps.setTimestamp(5, new Timestamp(file_.getCreationTime().getTime()));
-        ps.setString(6, file_.getHash());
+        ps.setString(2, file.getAbsolutePath());
+        ps.setString(3, file.getFileName());
+        ps.setLong(4, file.getSize());
+        ps.setTimestamp(5, new Timestamp(file.getCreationTime().getTime()));
+        ps.setTimestamp(6, new Timestamp(file.getModificationTime().getTime()));
+        ps.setString(7, file.getHash());
         ps.addBatch();
       }
       ps.executeBatch();
-      System.out.println("Added " + CACHE_SIZE + " found files.");
+      System.out.println("Added " + cache.size() + " found files.");
       ps.close();
       cache.clear();
+    } catch (final SQLException e) {
+      e.printStackTrace();
+    }
+  }
+
+  public boolean checkExists(final FoundFile file) {
+    try (final PreparedStatement ps = con
+        .prepareStatement("SELECT * FROM files "
+            + "WHERE search_id = ? AND fullpath = ? AND size = ? AND created = ? AND modified = ?")) {
+      ps.setString(1, searchId);
+      ps.setString(2, file.getAbsolutePath());
+      ps.setLong(3, file.getSize());
+      ps.setTimestamp(4, new Timestamp(file.getCreationTime().getTime()));
+      ps.setTimestamp(5, new Timestamp(file.getModificationTime().getTime()));
+      return ps.executeQuery().isBeforeFirst();
+    } catch (final SQLException e) {
+      e.printStackTrace();
+    }
+    throw new RuntimeException();
+  }
+
+  public void truncateSearch() {
+    try (final PreparedStatement ps = con
+        .prepareStatement("DELETE FROM files WHERE search_id = ?;")) {
+      ps.setString(1, searchId);
+      ps.executeUpdate();
     } catch (final SQLException e) {
       e.printStackTrace();
     }

@@ -5,44 +5,35 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.DirectoryStream.Filter;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
 
 public final class Searcher {
 
   private final Path root;
-  private final List<Path> excluded;
+  private final Filter<Path> filter;
   private final Delegate delegate;
 
-  public Searcher(final Path root, final Delegate delegate) {
-    this(root, Collections.<Path> emptyList(), delegate);
-  }
-
-  public Searcher(final Path root, final List<Path> excluded,
+  public Searcher(final Path root, final Filter<Path> filter,
       final Delegate delegate) {
     this.root = root;
-    this.excluded = excluded;
+    this.filter = filter;
     this.delegate = delegate;
   }
 
   public void search() {
-    try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
+    try (DirectoryStream<Path> stream = Files.newDirectoryStream(root, filter)) {
       for (final Path file : stream) {
         if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-          examine(file);
+          delegate.found(Main.pathToFound(file, getHash(file)));
         }
-        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)
-            && !excluded.contains(file)) {
-          new Searcher(file, excluded, delegate).search();
+        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) {
+          new Searcher(file, filter, delegate).search();
         }
       }
     } catch (IOException | DirectoryIteratorException x) {
@@ -50,21 +41,8 @@ public final class Searcher {
     }
   }
 
-  private void examine(final Path path) {
-    try {
-      final BasicFileAttributes attributes = Files.readAttributes(path,
-          BasicFileAttributes.class);
-      final FileTime creationTime = attributes.creationTime();
-
-      delegate.found(new FoundFile(path.toAbsolutePath().toString(), path
-          .getFileName().toString(), attributes.size(), new Date(creationTime
-          .toMillis()), getHash(path)));
-    } catch (final IOException e) {
-      e.printStackTrace();
-    }
-  }
-
-  private static String getHash(final Path path) throws IOException {
+  private static String getHash(final Path path) {
+    System.out.println("Hashing " + path);
 
     MessageDigest md = null;
     ByteBuffer bbf = null;
@@ -100,6 +78,9 @@ public final class Searcher {
 
       return hexString.toString();
     } catch (final NoSuchAlgorithmException e) {
+      return null;
+    } catch (final IOException e) {
+      e.printStackTrace();
       return null;
     }
   }
