@@ -2,7 +2,6 @@ package cz.matej.kostelec;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream.Filter;
-import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -11,24 +10,23 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Date;
 import java.util.UUID;
 
+// TODO list of inclusion folders, list of exclusion folders
+// TODO check root exists on start (unmounted drive)
+// TODO "interested only in duplicates in this folder"
 public final class Main {
-
-  private static final String RESUME_ID = "68f4cd51-39c0-4450-a2ab-b39e1c24e96b";
-  private static final long MIN_SIZE = 1000000l;
-  private static final boolean TRUNCATE = false;
 
   public static void main(final String[] args) {
     final String searchId;
-    if (RESUME_ID == null) {
+    if (Configuration.RESUME_ID == null) {
       searchId = UUID.randomUUID().toString();
       System.out.println("Starting a new search ID " + searchId);
     } else {
-      searchId = RESUME_ID;
+      searchId = Configuration.RESUME_ID;
       System.out.println("Resuming search ID " + searchId);
     }
     final DatabaseDelegate delegate = new DatabaseDelegate(searchId);
     delegate.init();
-    if (TRUNCATE) {
+    if (Configuration.TRUNCATE) {
       delegate.truncateSearch();
       return;
     }
@@ -41,26 +39,26 @@ public final class Main {
       }
     });
 
-    final FileSystem defaultFS = FileSystems.getDefault();
-    new Searcher(defaultFS.getPath("/Users/vektor/Devel"), new Filter<Path>() {
+    new Searcher(FileSystems.getDefault().getPath(Configuration.SEARCH_ROOT),
+        new Filter<Path>() {
 
-      @Override
-      public boolean accept(final Path entry) throws IOException {
-        if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
-          return true;
-        }
-        final BasicFileAttributes attributes = Files.readAttributes(entry,
-            BasicFileAttributes.class);
-        if (attributes.size() < MIN_SIZE) {
-          return false;
-        }
-        if (RESUME_ID == null) {
-          return true;
-        }
-        return !delegate.checkExists(Main.pathToFound(entry, null));
-      }
+          @Override
+          public boolean accept(final Path entry) throws IOException {
+            if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
+              return true;
+            }
+            final BasicFileAttributes attributes = Files.readAttributes(entry,
+                BasicFileAttributes.class);
+            if (attributes.size() < Configuration.MIN_SIZE) {
+              return false;
+            }
+            if (Configuration.RESUME_ID == null) {
+              return true;
+            }
+            return !delegate.checkExists(Main.pathToFound(entry, null));
+          }
 
-    }, delegate).search();
+        }, delegate).search();
     delegate.close();
   }
 
